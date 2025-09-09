@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>eu.europeana.metis</groupId>
+	<artifactId>ldes-client</artifactId>
+	<version>0.1-SNAPSHOT</version>
+	<packaging>jar</packaging>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<version.maven.compiler.plugin>3.11.0</version.maven.compiler.plugin>
+		<version.maven.release.plugin>2.5.3</version.maven.release.plugin>
+		<version.metis>14</version.metis>
+	</properties>
+
+	<repositories>
+		<repository>
+			<id>libs-release</id>
+			<name>libs-release</name>
+			<url>https://artifactory.eanadev.org/artifactory/libs-release</url>
+			<releases>
+				<enabled>true</enabled>
+			</releases>
+			<snapshots>
+				<enabled>false</enabled>
+			</snapshots>
+		</repository>
+		<repository>
+			<id>libs-snapshot</id>
+			<name>libs-snapshot</name>
+			<url>https://artifactory.eanadev.org/artifactory/libs-snapshot</url>
+			<releases>
+				<enabled>false</enabled>
+			</releases>
+			<snapshots>
+				<enabled>true</enabled>
+			</snapshots>
+		</repository>
+	</repositories>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+			</plugin>
+			<!--plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-dependency-plugin</artifactId>
+				<executions>
+					<execution>
+						<id>copy-dependencies</id> 
+				 		<phase>prepare-package</phase>
+						<goals>
+							<goal>copy-dependencies</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>
+								${project.build.directory}/${project.build.finalName}.lib</outputDirectory>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-release-plugin</artifactId>
+				<version>${version.maven.release.plugin}</version>
+			</plugin>
+		</plugins>
+		<pluginManagement>
+			<plugins>
+				<plugin>
+					<groupId>org.apache.maven.plugins</groupId>
+					<artifactId>maven-compiler-plugin</artifactId>
+					<version>${version.maven.compiler.plugin}</version>
+					<configuration>
+						<release>21</release>
+					</configuration>
+				</plugin>
+			</plugins>
+		</pluginManagement>
+	</build>
+ 
+	<dependencies>
+		<dependency>
+			<groupId>eu.europeana.metis</groupId>
+			<artifactId>metis-harvesting</artifactId>
+			<version>${version.metis}</version>
+		</dependency>
+		<dependency>
+			<groupId>eu.europeana.metis</groupId>
+			<artifactId>metis-ld-aggregation-segmenter</artifactId>
+			<version>1.0-SNAPSHOT</version>
+		</dependency>
+		
+
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5.14</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>fluent-hc</artifactId>
+			<version>4.5.14</version>
+		</dependency>
+
+		<dependency>
+		    <groupId>args4j</groupId>
+		    <artifactId>args4j</artifactId>
+		    <version>2.33</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-lang3</artifactId>
+			<version>3.3.2</version>
+		</dependency>
+
+		<dependency>
+			<groupId>commons-io</groupId>
+			<artifactId>commons-io</artifactId>
+			<version>2.6</version>
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.4</version>
+			<scope>compile</scope>
+		</dependency>
+		
+
+		<dependency>
+			<groupId>org.apache.jena</groupId>
+			<artifactId>jena-core</artifactId>
+			<version>4.10.0</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>org.apache.jena</groupId>
+			<artifactId>jena-arq</artifactId>
+			<version>4.10.0</version>
+		</dependency>
+		
+		<dependency>
+			<groupId>args4j</groupId>
+			<artifactId>args4j</artifactId>
+			<version>2.33</version>
+		</dependency>
+		
+		<dependency>
+		    <groupId>commons-codec</groupId>
+		    <artifactId>commons-codec</artifactId>
+		    <version>1.19.0</version>
+		</dependency>
+	</dependencies>
+</project>
