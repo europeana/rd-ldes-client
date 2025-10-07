@@ -8,6 +8,8 @@ import org.kohsuke.args4j.Option;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.CrawlReport;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.LdesCrawlActivityStreamsAlgorithm;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.TraversalOrderedByTimestamp;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.TreeTraversal;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.demo.syncdb.InMemoryTimestampStore;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.demo.syncdb.TimestampTracker.Deleted;
 
@@ -43,7 +45,7 @@ public class EdmAggregationDemonstrator {
 
 	static class LdesHarvesterDemo {
 		InMemoryTimestampStore timestampTracker;
-		LdesCrawlActivityStreamsAlgorithm ldesCrawlAlgorithm;
+		TreeTraversal ldesCrawlAlgorithm;
 		String streamUrl;
 
 		public LdesHarvesterDemo(String streamUrl, String iiifManifestTimestampFile, String edmRepoFolder,
@@ -54,7 +56,8 @@ public class EdmAggregationDemonstrator {
 			EdmRecordsActivityHandler activityHandler = new EdmRecordsActivityHandler(timestampTracker, seeAlsoHarvester);
 			if (logFilePath != null)
 				activityHandler.setLogFile(new File(logFilePath));
-			ldesCrawlAlgorithm = new LdesCrawlActivityStreamsAlgorithm(activityHandler);
+//			ldesCrawlAlgorithm = new LdesCrawlActivityStreamsAlgorithm(activityHandler);
+			ldesCrawlAlgorithm = new TraversalOrderedByTimestamp(activityHandler);
 		}
 
 		public void executeLdesCrawling() throws Exception {

@@ -120,8 +120,9 @@ public class Member implements Comparable<Member>{
 
 	@Override
 	public int compareTo(Member other) {
-//    long diffMillis = ChronoUnit.MILLIS.between(other.getTimestamp(), getTimestamp());
-    long diffMillis = ChronoUnit.MILLIS.between(getTimestamp(), other.getTimestamp());
+    long diffMillis = ChronoUnit.MILLIS.between(other.getTimestamp(), getTimestamp());
+    // aor for descending order
+    //    long diffMillis = ChronoUnit.MILLIS.between(getTimestamp(), other.getTimestamp());
     if(diffMillis>Integer.MAX_VALUE)
       return Integer.MAX_VALUE;
     if(diffMillis<Integer.MIN_VALUE)

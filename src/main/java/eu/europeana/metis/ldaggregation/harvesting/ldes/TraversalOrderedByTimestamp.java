@@ -26,17 +26,16 @@ import eu.europeana.metis.ldaggregation.harvesting.ldes.util.RdfUtil;
 
 /**
  * Implementation of the processing algorithm for an LDES stream using timestamps
- * @deprecated
+ *
  * @author Nuno Freire
  * @since 08/09/2025
  */
-public class LdesCrawlActivityStreamsAlgorithm {
+public class TraversalOrderedByTimestamp implements TreeTraversal {
 
 	/**
 	 * Holds the current state of an ongoing crawl
 	 */
 	class ProcessState {
-		boolean onlyDelete = false;
 		Instant lastCrawl = null;
 		HashSet<String> processedItems = new HashSet<String>();
 		Instant latestCrawledTimestamp = null;
@@ -58,7 +57,7 @@ public class LdesCrawlActivityStreamsAlgorithm {
 	 * @param crawler the handler for the Activities found during the crawl
 	 * @throws Exception
 	 */
-	public LdesCrawlActivityStreamsAlgorithm(ActivityHandler crawler) {
+	public TraversalOrderedByTimestamp(ActivityHandler crawler) {
 		  this.crawler = crawler;
 		  this.httpClient = new JavaNetHttpClient();
 	}
@@ -69,7 +68,7 @@ public class LdesCrawlActivityStreamsAlgorithm {
 	 * @param httpClient
 	 * @throws Exception
 	 */
-	public LdesCrawlActivityStreamsAlgorithm(ActivityHandler crawler, HttpClient httpClient) {
+	public TraversalOrderedByTimestamp(ActivityHandler crawler, HttpClient httpClient) {
     super();
     this.crawler = crawler;
     this.httpClient = httpClient;
@@ -102,7 +101,6 @@ public class LdesCrawlActivityStreamsAlgorithm {
 			Model rootNode = nodeQuads.getDefaultModel();
 			
 			LdesNode node=new LdesNode(rootNode, nodeQuads);
-//			LdesNode node=new LdesNode(streamRs);
 			validateStream(node);
 			processNode(node);
 
@@ -117,10 +115,10 @@ public class LdesCrawlActivityStreamsAlgorithm {
 
 	 protected void processNode(LdesNode stream) throws ValidationException, AccessException, InterruptedException, IOException {
 	      Optional<View> view=stream.getView();
-	      if(view.isPresent())
-	        processView(view.get());
 	      List<Member> members=stream.getMembers();
 	      processMembers(members);
+	      if(view.isPresent())
+	        processView(view.get());
 	}
 	
 	protected void processNode(String nodeUrl) throws ValidationException, AccessException, InterruptedException, IOException  {
@@ -155,17 +153,17 @@ public class LdesCrawlActivityStreamsAlgorithm {
   private void processMembers(List<Member> members) throws ValidationException, IOException {
     for(Member member: members) 
       member.validate();
-    List<Member> membersSortedDescending=new ArrayList<Member>(members);
+    List<Member> membersSortedAscending=new ArrayList<Member>(members);
 //    DEV.print("Processing "+membersSortedDescending.size()+ " members");
-    Collections.sort(membersSortedDescending);
-    for (Member activity : membersSortedDescending) {
+    Collections.sort(membersSortedAscending);
+    for (Member activity : membersSortedAscending) {
       if (status.lastCrawl != null && !activity.getTimestamp().isAfter(status.lastCrawl) ) {
 //        DEV.traceResource(activity.getObject().getURI(), activity.getTypeOfActivity()+ " before last crawl");
 //        DEV.print(activity.getTypeOfActivity()+ " before last crawl on "+ activity.getObject().getURI());
 //        DEV.print(activity.getTypeOfActivity()+" " +activity.getTimestamp()+" before last crawl on "+ activity.getObject().getURI());
 //        crawler.log("Crawl finished - timestamp of last crawl reached.");
 //        continue;
-        break;
+        continue;
       }
 //      DEV.traceResource(activity.getObject().getURI(), activity.getTypeOfActivity()+ "");
 //      DEV.print(activity.getTypeOfActivity()+" " +activity.getTimestamp()+" on "+ activity.getObject().getURI());
@@ -179,32 +177,10 @@ public class LdesCrawlActivityStreamsAlgorithm {
 //        }
 //        status.report.incrementActivity(activity.getTypeOfActivity());
 //      } else if (status.processedItems.contains(activity.getObject().getId())) {
-      if (status.processedItems.contains(activity.getObject().getURI())) {
-//        DEV.trace("Already processed - "+ activity.getTypeOfActivity()+" on "+activity.getObject().getURI());
-        continue;
-//      } else if (!crawler.isSupportedResourceType(activity.getObject().getType())) {
-//        status.processedItems.add(activity.getObject().getId());
-//        // do nothing
-//      } else if (activity.getTypeOfActivity() == ActivityType.Remove) {
-//        String originId = activity.getOriginId();
-//        if (originId == null || originId.equals(streamUrl)) {
-//          status.report.incrementActivity(activity.getTypeOfActivity());
-//          crawler.processActivity(activity);
-//          status.processedItems.add(activity.getObject().getId());
-//        }
-      } else if (activity.getTypeOfActivity() == ActivityType.Delete) {
+      if (activity.getTypeOfActivity() == ActivityType.Delete) {
         status.report.incrementActivity(activity.getTypeOfActivity());
         crawler.processActivity(activity);
         status.processedItems.add(activity.getObject().getURI());
-      } else if (status.onlyDelete) {
-        // do nothing
-//      } else if (activity.getTypeOfActivity() == ActivityType.Add) {
-//        String targetId = activity.getTarget().getURI();
-//        if (targetId == null || targetId.equals(streamUrl)) {
-//          status.report.incrementActivity(activity.getTypeOfActivity());
-//          crawler.processActivity(activity);
-//          status.processedItems.add(activity.getObject().getId());
-//        }
       } else if (activity.getTypeOfActivity() == ActivityType.Create
           || activity.getTypeOfActivity() == ActivityType.Update) {
         status.report.incrementActivity(activity.getTypeOfActivity());
@@ -236,17 +212,13 @@ public class LdesCrawlActivityStreamsAlgorithm {
       if(!rels.mayBePrunned(status.lastCrawl))
         toProcess.add(rels);
     }
+    Collections.sort(toProcess);
     for(NodeRelations nRels : toProcess)
         processNode(nRels.getNodeUrl());
   }
 
 
-  /**
-   * @param viewRs
-   */
-	protected void processView(Resource viewRs) {
-    
-  }
+
 
 //	protected String processPage(String pageUri) throws ValidationException, IOException {
 //		crawler.log("Processing page " + pageUri);
