@@ -4,18 +4,21 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
-import java.util.Iterator;
+import java.util.HashSet;
+import java.util.Set;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.LdesConstants;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.ValidationException;
+	import eu.europeana.metis.ldaggregation.harvesting.ldes.util.ShaclPath;
 
 /**
  * Data object for a as:Activity
@@ -33,10 +36,11 @@ public class Member implements Comparable<Member>{
 	  this.quadsDataset=quadsDataset;
 	  this.timestampPath= timestampPath;
 	  this.versionPath= versionPath;
-	  validate();
 	}
 
 	public void validate() throws ValidationException {
+		if (getObject() == null)
+			return;
 		ActivityType typeOfActivity = null;
 		try{
 		  typeOfActivity = getTypeOfActivity();
@@ -69,6 +73,8 @@ public class Member implements Comparable<Member>{
 	}
 
   public Instant getTimestamp() {
+	if (timestampPath == null)
+	  return null;
     Statement endTimeSt = activityRes.getProperty(timestampPath); 
     if(endTimeSt!=null)
       return parseXsdDate(endTimeSt.getObject().asLiteral().getString());
@@ -120,6 +126,12 @@ public class Member implements Comparable<Member>{
 
 	@Override
 	public int compareTo(Member other) {
+	if (getTimestamp() == null && other.getTimestamp() == null)
+	  return activityRes.getURI().compareTo(other.activityRes.getURI());
+	if (getTimestamp() == null)
+	  return 1;
+	if (other.getTimestamp() == null)
+	  return -1;
     long diffMillis = ChronoUnit.MILLIS.between(other.getTimestamp(), getTimestamp());
     // aor for descending order
     //    long diffMillis = ChronoUnit.MILLIS.between(getTimestamp(), other.getTimestamp());
@@ -134,7 +146,37 @@ public class Member implements Comparable<Member>{
    * @return
    */
   public Model getObjectNamedGraph() {
-    return quadsDataset.getNamedModel(activityRes.getURI());
+	Dataset extracted = getDataset();
+	Model union = ModelFactory.createDefaultModel().add(extracted.getDefaultModel());
+	if (extracted.containsNamedModel(activityRes.getURI()))
+	  union.add(extracted.getNamedModel(activityRes.getURI()));
+	return union;
   }
+
+	public Dataset getDataset() {
+	  Dataset extracted = org.apache.jena.query.DatasetFactory.createTxnMem();
+	  copySubjectClosure(activityRes, quadsDataset.getDefaultModel(), extracted.getDefaultModel(), new HashSet<>());
+	  if (quadsDataset.containsNamedModel(activityRes.getURI()))
+		extracted.addNamedModel(activityRes.getURI(), quadsDataset.getNamedModel(activityRes.getURI()));
+	  return extracted;
+	}
+
+	private static void copySubjectClosure(Resource subject, Model source, Model target, Set<Resource> visited) {
+	  if (!visited.add(subject))
+		return;
+	  source.listStatements(subject, null, (org.apache.jena.rdf.model.RDFNode) null).toList().forEach(statement -> {
+		target.add(statement);
+		if (statement.getObject().isAnon())
+		  copySubjectClosure(statement.getObject().asResource(), source, target, visited);
+	  });
+	}
+
+	public String getId() {
+	  return activityRes.getURI();
+	}
+
+	public java.util.List<RDFNode> evaluatePath(RDFNode path) {
+	  return ShaclPath.evaluate(getObjectNamedGraph(), activityRes, path);
+	}
 	
 }

@@ -8,13 +8,9 @@ Run the current regression suite with:
 mvn test
 ```
 
-Known-red LDES 1.0 contract tests are tagged separately so individual
-compliance milestones can be developed test-first:
+This includes the LDES 1.0 RDF serialization, discovery, extraction, relation,
+and HTTP retry regressions. The external black-box suite in
+`../ldes-client-conformance-test-suite` remains the acceptance gate.
 
-```sh
-mvn test -Pspec-compliance
-```
-
-The external black-box suite in `../ldes-client-conformance-test-suite` remains
-the acceptance gate. See [SPEC_COMPLIANCE_PLAN.md](SPEC_COMPLIANCE_PLAN.md) for
-the failure analysis, implementation order, and definition of done.
+See [SPEC_COMPLIANCE_PLAN.md](SPEC_COMPLIANCE_PLAN.md) for the implementation
+record, unsupported optional capabilities, and verification workflow.

@@ -71,7 +71,10 @@ public class RdfUtil {
 	public static final String CONTENT_TYPES_ACCEPT_HEADER = Lang.RDFXML.getContentType().getContentTypeStr() + ", "
 			+ Lang.TURTLE.getContentType().getContentTypeStr() + ", " + Lang.JSONLD.getContentType().getContentTypeStr();
 	public static final String CONTENT_TYPES_QUADS_ACCEPT_HEADER = Lang.JSONLD.getContentType().getContentTypeStr() + ", "
-	    + Lang.TRIG.getContentType().getContentTypeStr();
+	    + Lang.TRIG.getContentType().getContentTypeStr() + ", "
+	    + Lang.NQUADS.getContentType().getContentTypeStr() + ", "
+	    + Lang.NTRIPLES.getContentType().getContentTypeStr() + ", "
+	    + Lang.TURTLE.getContentType().getContentTypeStr();
 
 	protected static ErrorHandler lenientErrorHandler = new ErrorHandler() {
     @Override
@@ -231,14 +234,21 @@ public class RdfUtil {
 	}
 
   public static Dataset readRdfQuads(byte[] content, Lang lang) {
+	return readRdfQuads(content, lang, null);
+  }
+
+  public static Dataset readRdfQuads(byte[] content, Lang lang, String baseUri) {
     if (lang == null)
       throw new InvalidParameterException("Lang must be provided");
     Dataset dataset = DatasetFactory.createTxnMem();
     try (ByteArrayInputStream is = new ByteArrayInputStream(content)) {
-      RDFParser.create().source(is) // Set the input stream
-          .lang(lang) // Specify the language (important for accurate parsing)
-          .errorHandler(lenientErrorHandler) // Set your custom error handler
-          .parse(dataset);
+	  var parser = RDFParser.create().source(is).lang(lang).errorHandler(lenientErrorHandler);
+	  if (baseUri != null)
+		parser.base(baseUri);
+	  if (RDFLanguages.isTriples(lang))
+		parser.parse(dataset.getDefaultModel());
+	  else
+		parser.parse(dataset);
     } catch (IOException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -253,7 +263,7 @@ public class RdfUtil {
 
 	public static Dataset readRdfQuadsFromUri(String uri) throws AccessException, InterruptedException, IOException {
 	  HttpRequest rdfReq = HttpUtil.makeRequest(uri, "Accept", CONTENT_TYPES_QUADS_ACCEPT_HEADER);
-	  return readRdfQuads(new HttpResponse(rdfReq));
+	  return readRdfQuads(new HttpResponse(rdfReq), uri);
 	}
 
 	public static void writeRdf(Model model, Lang l, OutputStream out) {
@@ -372,7 +382,11 @@ public class RdfUtil {
 	}
 
 	public static Dataset readRdfQuads(HttpResponse rdf) {
-	  Dataset model = readRdfQuads(rdf.body, fromMimeType(rdf.getHeader("Content-Type")));
+	  return readRdfQuads(rdf, null);
+	}
+
+	public static Dataset readRdfQuads(HttpResponse rdf, String baseUri) {
+	  Dataset model = readRdfQuads(rdf.body, fromMimeType(rdf.getHeader("Content-Type")), baseUri);
 	  if (model.isEmpty())
 	    return null;
 	  return model;

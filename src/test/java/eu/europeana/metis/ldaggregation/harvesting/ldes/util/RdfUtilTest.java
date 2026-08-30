@@ -8,7 +8,6 @@ import java.util.stream.Stream;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.riot.Lang;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -21,15 +20,17 @@ class RdfUtilTest {
 
   @ParameterizedTest(name = "parses {0}")
   @MethodSource("supportedRepresentations")
-  @Tag("spec-compliance-pending")
   void parsesEveryRequiredRdfRepresentation(String name, Lang language, String rdf) {
     Dataset dataset = RdfUtil.readRdfQuads(rdf.getBytes(StandardCharsets.UTF_8), language);
 
-    assertEquals(1, dataset.asDatasetGraph().size(), name);
+    long statementCount = dataset.getDefaultModel().size();
+    var names = dataset.listNames();
+    while (names.hasNext())
+      statementCount += dataset.getNamedModel(names.next()).size();
+    assertEquals(1, statementCount, name);
   }
 
   @Test
-  @Tag("spec-compliance-pending")
   void advertisesEveryRequiredRdfRepresentation() {
     String accept = RdfUtil.CONTENT_TYPES_QUADS_ACCEPT_HEADER;
 

@@ -14,8 +14,6 @@
 		<version.maven.release.plugin>2.5.3</version.maven.release.plugin>
 		<version.maven.surefire.plugin>3.5.2</version.maven.surefire.plugin>
 		<version.junit>5.11.4</version.junit>
-		<!-- Known-red specification tests are enabled with -Pspec-compliance. -->
-		<test.excluded.groups>spec-compliance-pending</test.excluded.groups>
 	</properties>
 
 	<build>
@@ -56,9 +54,6 @@
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
 				<version>${version.maven.surefire.plugin}</version>
-				<configuration>
-					<excludedGroups>${test.excluded.groups}</excludedGroups>
-				</configuration>
 			</plugin>
 		</plugins>
 		<pluginManagement>
@@ -140,13 +135,4 @@
 		</dependency>
 	</dependencies>
 
-	<profiles>
-		<profile>
-			<id>spec-compliance</id>
-			<properties>
-				<!-- No test uses this tag, so the pending compliance tests are included. -->
-				<test.excluded.groups>none</test.excluded.groups>
-			</properties>
-		</profile>
-	</profiles>
 </project>

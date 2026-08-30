@@ -8,7 +8,6 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
@@ -19,7 +18,6 @@ class HttpUtilTest {
 
   @ParameterizedTest
   @ValueSource(ints = {408, 425, 429, 500, 502, 503, 504})
-  @Tag("spec-compliance-pending")
   void retriesRequiredTransientStatuses(int transientStatus) throws Exception {
     AtomicInteger requests = new AtomicInteger();
     try (ScenarioServer server = new ScenarioServer(exchange -> {
@@ -38,7 +36,6 @@ class HttpUtilTest {
 
   @ParameterizedTest
   @ValueSource(ints = {400, 401, 403, 404, 410})
-  @Tag("spec-compliance-pending")
   void doesNotRetryTerminalStatuses(int terminalStatus) throws Exception {
     AtomicInteger requests = new AtomicInteger();
     try (ScenarioServer server = new ScenarioServer(exchange -> {

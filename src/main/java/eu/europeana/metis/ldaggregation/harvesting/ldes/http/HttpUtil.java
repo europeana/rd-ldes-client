@@ -6,6 +6,7 @@ import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map.Entry;
+	import java.util.Set;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.http.Header;
@@ -16,8 +17,9 @@ public class HttpUtil {
 
 	public static final boolean ALWAYS_FOLLOW_REDIRECTS = true;
 	public static final int RETRIES_ON_IOEXCEPTION = 3;
-	public static final int RETRIES_ON_HTTP_STATUS = 1;
-	public static final int RETRY_SLEEP_MILISECONDS = 1;
+	public static final int RETRIES_ON_HTTP_STATUS = 8;
+	public static final int RETRY_SLEEP_MILISECONDS = 20;
+	private static final Set<Integer> RETRYABLE_STATUSES = Set.of(408, 425, 429, 500, 502, 503, 504);
 
 	public static List<Header> getAndStoreWithHeaders(String resourceUri, File storeFile)
 			throws IOException, InterruptedException, AccessException {
@@ -63,10 +65,10 @@ public class HttpUtil {
 		return makeRequest(ldReq);
 	}
 
-	private static HttpRequest makeRequest(UrlRequest ldReq) throws AccessException, InterruptedException {
-		HttpRequest resourceRequest = new HttpRequest(ldReq);
+	public static HttpRequest makeRequest(UrlRequest ldReq) throws AccessException, InterruptedException {
 		int tries = 0;
 		while (true) {
+			HttpRequest resourceRequest = new HttpRequest(ldReq);
 			try {
 				tries++;
 				HttpRequestService.INSTANCE.fetch(resourceRequest);
@@ -75,24 +77,28 @@ public class HttpUtil {
 					if (resStatusCode >= 300 && resStatusCode < 400) {
 						String location = resourceRequest.getResponseHeader("Location");
 						if (location != null) {
-							ldReq.setUrl(location);
+							ldReq.setUrl(java.net.URI.create(ldReq.getUrl()).resolve(location).toString());
+							resourceRequest.getResponse().close();
 							return makeRequest(ldReq);
 						}
-					} else if (resStatusCode == 429) {
+					} else if (RETRYABLE_STATUSES.contains(resStatusCode)) {
+						if (tries >= RETRIES_ON_HTTP_STATUS)
+							throw new AccessException(ldReq.getUrl(), resStatusCode);
+						long waitMillis = RETRY_SLEEP_MILISECONDS;
 						String retryAfter = resourceRequest.getResponseHeader("Retry-After");
 						if (retryAfter != null) {
 							try {
-								Thread.sleep(Long.parseLong(retryAfter));
-								return makeRequest(ldReq);
+								waitMillis = Math.max(0, Long.parseLong(retryAfter) * 1000);
 							} catch (NumberFormatException e) {
-								// ignore and proceed to sleep
+								waitMillis = RETRY_SLEEP_MILISECONDS;
 							}
 						}
-						Thread.sleep(1000);
-						return makeRequest(ldReq);
-					}
-					if (tries > RETRIES_ON_HTTP_STATUS)
+						resourceRequest.getResponse().close();
+						Thread.sleep(waitMillis);
+						continue;
+					} else {
 						throw new AccessException(ldReq.getUrl(), resStatusCode);
+					}
 				}
 				return resourceRequest;
 			} catch (IOException ex) {

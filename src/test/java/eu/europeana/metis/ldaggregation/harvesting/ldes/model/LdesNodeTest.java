@@ -8,7 +8,6 @@ import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFParser;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.ValidationException;
@@ -34,7 +33,6 @@ class LdesNodeTest {
   }
 
   @Test
-  @Tag("spec-compliance-pending")
   void discoversTheStreamFromTheCurrentPageViewWithoutRequiringRdfType() {
     Dataset dataset = dataset("""
         @prefix tree: <https://w3id.org/tree#> .
@@ -47,7 +45,6 @@ class LdesNodeTest {
   }
 
   @Test
-  @Tag("spec-compliance-pending")
   void extractsGenericMembersWithoutActivityStreamsProperties() throws ValidationException {
     Dataset dataset = dataset("""
         @prefix ldes: <https://w3id.org/ldes#> .
