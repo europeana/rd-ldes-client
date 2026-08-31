@@ -1,6 +1,6 @@
 # rd-ldes-client
 
-A Java 21 client for discovering, traversing, and synchronizing [Linked Data
+A Java client for discovering, traversing, and synchronizing [Linked Data
 Event Streams (LDES)](https://w3id.org/ldes/specification). It supports generic
 LDES members as RDF datasets, ordered and unordered traversal, common SHACL
 property paths, HTTP cache validation, resumable synchronization, and LDES
@@ -14,9 +14,8 @@ supports unordered streams.
 
 ### Requirements
 
-- JDK 21
+- JDK 21+
 - Maven 3.8 or newer
-- Network access to the LDES server being crawled
 
 Build and install the snapshot in your local Maven repository:
 
@@ -131,10 +130,6 @@ mvn org.codehaus.mojo:exec-maven-plugin:3.5.1:java \
   -Dexec.args=https://data.rijksmuseum.nl/ldes/collection.json
 ```
 
-These are third-party public services, so availability and dataset size are
-outside this project's control. Do not assume that a first crawl will be small
-or fast.
-
 ## How the client works
 
 `TraversalOrderedByTimestamp` starts at an LDES entry point, discovers its
@@ -187,56 +182,6 @@ Unrelated page triples and unrelated named graphs are excluded.
 `getObjectNamedGraph()` returns a legacy union model for older ActivityStreams
 consumers and cannot preserve named-graph boundaries.
 
-## Production synchronization
-
-A one-shot handler may rely on all default state and cache methods. A recurring
-synchronizer should persist both processed member IDs and HTTP representations.
-Persisting only the latest timestamp is not sufficient: streams may rebalance,
-reuse equal ordering values, or expose unordered members.
-
-Recommended practices:
-
-- Store state per event-stream entry point; do not share one member-ID set
-  across unrelated streams.
-- Commit processed IDs and the latest timestamp atomically from the two-argument
-  `crawlEnd` callback. Do not advance them from `crawlStart` or `crawlFail`.
-- Key `CachedResponse` values by the exact resource URI supplied to the cache
-  callbacks. Preserve the response bytes, content type, ETag, and immutable
-  flag without RDF reserialization.
-- Keep immutable cached nodes indefinitely or until an explicit administrative
-  reset. Mutable nodes are revisited and conditionally requested using ETags.
-- Make `processActivity` idempotent. Durable state protects normal restarts,
-  but idempotency also protects against crashes between an external side effect
-  and the final state commit.
-- Create a separate traversal instance for each run. Traversal instances hold
-  mutable crawl state and are not intended for concurrent use.
-- Apply backpressure in `processActivity` rather than starting unbounded
-  asynchronous work. A successful crawl means the callback returned
-  successfully, not that detached work eventually completed.
-- Inspect `CrawlReport.wasSuccessful()`. Traversal errors are reported through
-  the handler and report instead of always escaping `processStream`.
-- Treat `LdesContext.pollingInterval()` as server metadata. This client exposes
-  it but does not autonomously schedule the next crawl.
-
-For durable implementations, use a database transaction or write a temporary
-state file followed by an atomic rename. Cache writes may happen during a run,
-but the processed-member checkpoint should only become visible after success.
-
-## HTTP and RDF support
-
-The client advertises and parses:
-
-- JSON-LD (`application/ld+json`)
-- TriG (`application/trig`)
-- N-Quads (`application/n-quads`)
-- N-Triples (`application/n-triples`)
-- Turtle (`text/turtle`)
-
-It resolves relative IRIs against the response URL, follows redirects, treats
-a related node returning `410 Gone` as empty, retries bounded transient
-responses (`408`, `425`, `429`, `500`, `502`, `503`, and `504`), and honors
-`Retry-After`, ETags, `Cache-Control: immutable`, and `ldes:immutable true`.
-
 ## Building and testing
 
 Run the complete local regression suite:
@@ -270,58 +215,4 @@ every push and pull request and can be started manually. It:
    GitHub Actions artifact.
 
 The current verified result is 58 passed and 4 explicitly inapplicable optional
-scenarios. The undeclared optional capabilities are TREE Profile extraction
-and autonomous polling. See [SPEC_COMPLIANCE_PLAN.md](SPEC_COMPLIANCE_PLAN.md)
-for the implementation record and pinned suite revision.
-
-## Project layout
-
-```text
-src/main/java/                       Client implementation
-src/test/java/                       Unit and regression tests
-.ldes-conformance/adapters/          External-suite protocol adapter
-.github/workflows/ldes-conformance.yml
-                                     Conformance and EARL workflow
-SPEC_COMPLIANCE_PLAN.md              Compliance implementation record
-```
-
-## Contributing
-
-Contributions are welcome. Keep changes focused and preserve unrelated working
-tree changes when developing locally.
-
-Before opening a pull request:
-
-1. Add or update a focused regression test for observable behavior.
-2. Run `mvn clean test` on JDK 21.
-3. Run the conformance workflow for changes to discovery, traversal, member
-   extraction, HTTP behavior, ordering, state, caching, or context.
-4. Update this README when public APIs, supported behavior, requirements, or
-   operational guidance change.
-5. Update the repository-owned conformance adapter when an `ActivityHandler`,
-   `Member`, state, cache, or context API change affects the protocol bridge.
-
-### Design guidelines
-
-- Keep the generic LDES algorithm independent of ActivityStreams. Legacy
-  ActivityStreams behavior is a compatibility layer, not a requirement for a
-  valid member.
-- Test externally observable RDF and HTTP behavior rather than Jena iteration
-  order or private implementation details.
-- Preserve RDF dataset boundaries. Avoid flattening named graphs unless calling
-  a clearly documented legacy API.
-- Resolve IRIs using the retrieved document URL, including redirects.
-- Keep retries bounded and restrict them to explicitly transient failures.
-- Do not silently downgrade malformed or ambiguous discovery data; report a
-  useful validation failure.
-- Treat state formats as durable interfaces. Changes must be restart-safe and
-  should include migration guidance when compatibility cannot be preserved.
-- Keep optional capabilities explicit. An unsupported optional feature should
-  be reported as inapplicable, never claimed as passing.
-- Avoid adding production dependencies for examples or tests when an existing
-  JDK, Jena, or Apache HTTP facility is sufficient.
-
-When reporting a bug, include the entry-point URL or a minimal RDF fixture, the
-response content type and relevant HTTP status/headers, the traversal mode, the
-client revision, and the complete `CrawlReport` or exception. Remove secrets
-and private dataset content before sharing logs or cached responses.
+scenarios.
