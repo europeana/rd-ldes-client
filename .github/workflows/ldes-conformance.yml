@@ -14,7 +14,7 @@ concurrency:
 
 env:
   CONFORMANCE_SUITE_REPOSITORY: pietercolpaert/ldes-client-conformance-test-suite
-  CONFORMANCE_SUITE_REF: 278f1a64da279a39d6003a861cd1e523d0d5bd37
+  CONFORMANCE_SUITE_REF: 354ba52f08edc4f23db243dcd843472abe67ef77
   CONFORMANCE_REPORT: ldes-conformance-report
 
 jobs:

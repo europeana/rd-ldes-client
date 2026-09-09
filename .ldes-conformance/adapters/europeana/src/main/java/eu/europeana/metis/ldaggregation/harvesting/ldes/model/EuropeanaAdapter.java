@@ -62,7 +62,8 @@ public final class EuropeanaAdapter implements ActivityHandler {
     try {
       new TraversalOrderedByTimestamp(handler).processStream(input.path("entrypoint").asText());
       if (!handler.failed) {
-        handler.emit(event(handler.runId, "statistics", "membersEmitted", handler.emitted));
+        handler.emit(event(handler.runId, "statistics", "membersEmitted", handler.emitted,
+            "lastRun", Instant.now().toString()));
         handler.emit(event(handler.runId, "run-end", "status", "completed"));
       }
     } catch (Throwable error) {
@@ -141,6 +142,9 @@ public final class EuropeanaAdapter implements ActivityHandler {
     put(value, "shapes", context.shapes());
     put(value, "viewDescriptions", context.viewDescriptions());
     put(value, "retentionPolicies", context.retentionPolicies());
+    // Always present, empty included: the empty list is the evidence that the
+    // client resolved every announced policy and found none of them empty.
+    value.put("emptyRetentionPolicies", context.emptyRetentionPolicies());
     put(value, "timestampPath", context.timestampPath());
     put(value, "sequencePath", context.sequencePath());
     put(value, "versionTimestampPath", context.versionTimestampPath());

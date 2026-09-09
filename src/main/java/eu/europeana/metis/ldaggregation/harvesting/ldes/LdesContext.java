@@ -12,6 +12,8 @@ public record LdesContext(
     List<String> shapes,
     List<String> viewDescriptions,
     List<String> retentionPolicies,
+    /** Retention policies the page announces without describing them further. */
+    List<String> emptyRetentionPolicies,
     String timestampPath,
     String sequencePath,
     String versionTimestampPath,

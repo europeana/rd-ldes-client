@@ -142,7 +142,7 @@ The most important callbacks are:
 | Callback | Responsibility |
 | --- | --- |
 | `processActivity(Member)` | Process one previously unseen member. Use `Member.getDataset()` for its RDF dataset. |
-| `processContext(LdesContext)` | Observe stream/root IRIs, shapes, view descriptions, retention policies, ordering paths, and polling metadata. |
+| `processContext(LdesContext)` | Observe stream/root IRIs, shapes, view descriptions, retention policies, ordering paths, and polling metadata. Called as soon as the root node has been read, before any member. `emptyRetentionPolicies` lists the announced policies the root node describes no further, which LDES 1.0 §4.4 reads as "this view retains nothing". |
 | `getProcessedMemberIds(String)` | Restore durable member identifiers before a synchronization run. |
 | `crawlEnd(Instant, Set<String>)` | Commit the successful run's timestamp and processed-member state. |
 | `getCachedResponse(String)` | Restore a cached node representation and its ETag/immutability metadata. |
@@ -161,7 +161,9 @@ Choose a mode by overriding `ActivityHandler.getTraversalMode()`:
 
 - `AUTO` orders globally when the stream declares a timestamp or sequence path;
   otherwise it uses unordered traversal. This is the recommended default.
-- `UNORDERED` emits members without applying the stream's ordering paths.
+- `UNORDERED` emits members without applying the stream's ordering paths, each
+  one as soon as the page describing it has been read rather than at the end of
+  the crawl.
 - `ORDERED` requires an `ldes:timestampPath` or `ldes:sequencePath` and reports
   an error when neither is available.
 
@@ -214,5 +216,12 @@ every push and pull request and can be started manually. It:
 6. uploads `earl.ttl`, `summary.json`, coverage, and per-test evidence as a
    GitHub Actions artifact.
 
-The current verified result is 58 passed and 4 explicitly inapplicable optional
-scenarios.
+The current verified result against suite 0.1.1 is 109 passed and 0 failed,
+covering 76 of the 100 reviewed LDES 1.0 requirements behaviorally. All four
+group claims — ordered traversal, unordered traversal, member extraction and
+context information — pass on every applicable mandatory test.
+
+Five scenarios are inapplicable because they test optional capabilities the
+adapter does not declare: TREE Profile member extraction (3) and autonomous
+polling, where the client polls on its own schedule rather than being run per
+crawl (2).

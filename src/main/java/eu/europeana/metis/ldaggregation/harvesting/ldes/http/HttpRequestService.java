@@ -2,6 +2,8 @@ package eu.europeana.metis.ldaggregation.harvesting.ldes.http;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.util.List;
 import java.util.Vector;
 
 import org.apache.commons.io.FileUtils;
@@ -21,6 +23,7 @@ import org.apache.http.conn.socket.PlainConnectionSocketFactory;
 import org.apache.http.conn.ssl.NoopHostnameVerifier;
 import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
 import org.apache.http.conn.ssl.TrustSelfSignedStrategy;
+import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.impl.client.BasicCookieStore;
 import org.apache.http.impl.client.BasicCredentialsProvider;
 import org.apache.http.impl.client.CloseableHttpClient;
@@ -129,7 +132,13 @@ public class HttpRequestService {
 				throw new RuntimeException("Not implemented: " + url.getHttpMethod());
 
 			url.addHeaders(request);
-			CloseableHttpResponse response = httpClient.execute(request);
+			HttpClientContext context = HttpClientContext.create();
+			CloseableHttpResponse response = httpClient.execute(request, context);
+			// The client follows redirects itself, so the requested URL is not
+			// necessarily the one that answered.
+			List<URI> redirects = context.getRedirectLocations();
+			if (redirects != null && !redirects.isEmpty())
+				url.setFinalUrl(redirects.get(redirects.size() - 1).toString());
 
 //			if(httpCookieStore.getCookies().size()>50) {
 //				httpCookieStore.clearExpired(new Date());

@@ -2,7 +2,7 @@
   "protocolVersion": 0,
   "id": "europeana",
   "name": "LDES conformance adapter for rd-ldes-client",
-  "revision": "2",
+  "revision": "3",
   "client": {
     "id": "europeana-rd-ldes-client",
     "name": "europeana/rd-ldes-client",
@@ -17,7 +17,8 @@
   "timeoutMs": 45000,
   "capabilities": {
     "modes": [
-      "ordered"
+      "ordered",
+      "unordered"
     ],
     "memberExtraction": true,
     "context": true,

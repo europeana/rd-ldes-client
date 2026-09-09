@@ -4,12 +4,18 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
+import org.apache.jena.graph.Node;
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.sparql.core.DatasetGraph;
+import org.apache.jena.sparql.core.DatasetGraphFactory;
+import org.apache.jena.sparql.core.Quad;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
 import org.apache.jena.rdf.model.RDFNode;
@@ -18,7 +24,8 @@ import org.apache.jena.vocabulary.RDF;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.LdesConstants;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.ValidationException;
-	import eu.europeana.metis.ldaggregation.harvesting.ldes.util.ShaclPath;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.util.RdfUtil;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.util.ShaclPath;
 
 /**
  * Data object for a as:Activity
@@ -146,29 +153,40 @@ public class Member implements Comparable<Member>{
    * @return
    */
   public Model getObjectNamedGraph() {
-	Dataset extracted = getDataset();
-	Model union = ModelFactory.createDefaultModel().add(extracted.getDefaultModel());
-	if (extracted.containsNamedModel(activityRes.getURI()))
-	  union.add(extracted.getNamedModel(activityRes.getURI()));
-	return union;
+	return RdfUtil.unionModel(getDataset());
   }
 
+	/**
+	 * The member's own data, gathered by the default-graph-star rule.
+	 *
+	 * <p>Starting from the member, a node contributes the default-graph statements
+	 * it is the subject of and, if it also names a graph, everything in that graph.
+	 * Blank nodes reached along the way are followed the same way, which is what
+	 * lets a member reach a signature or provenance graph named by a blank node.</p>
+	 */
 	public Dataset getDataset() {
-	  Dataset extracted = org.apache.jena.query.DatasetFactory.createTxnMem();
-	  copySubjectClosure(activityRes, quadsDataset.getDefaultModel(), extracted.getDefaultModel(), new HashSet<>());
-	  if (quadsDataset.containsNamedModel(activityRes.getURI()))
-		extracted.addNamedModel(activityRes.getURI(), quadsDataset.getNamedModel(activityRes.getURI()));
-	  return extracted;
+	  DatasetGraph source = quadsDataset.asDatasetGraph();
+	  DatasetGraph extracted = DatasetGraphFactory.createTxnMem();
+	  copyNodeClosure(source, extracted, activityRes.asNode(), new HashSet<>());
+	  return DatasetFactory.wrap(extracted);
 	}
 
-	private static void copySubjectClosure(Resource subject, Model source, Model target, Set<Resource> visited) {
-	  if (!visited.add(subject))
+	private static void copyNodeClosure(DatasetGraph source, DatasetGraph target, Node focus,
+		Set<Node> visited) {
+	  if (!visited.add(focus))
 		return;
-	  source.listStatements(subject, null, (org.apache.jena.rdf.model.RDFNode) null).toList().forEach(statement -> {
-		target.add(statement);
-		if (statement.getObject().isAnon())
-		  copySubjectClosure(statement.getObject().asResource(), source, target, visited);
-	  });
+	  List<Quad> matching = new ArrayList<>();
+	  source.getDefaultGraph().find(focus, Node.ANY, Node.ANY)
+		  .forEachRemaining(triple -> matching.add(Quad.create(Quad.defaultGraphIRI, triple)));
+	  source.find(focus, Node.ANY, Node.ANY, Node.ANY).forEachRemaining(matching::add);
+	  for (Quad quad : matching) {
+		if (quad.isDefaultGraph())
+		  target.getDefaultGraph().add(quad.asTriple());
+		else
+		  target.add(quad);
+		if (quad.getObject().isBlank())
+		  copyNodeClosure(source, target, quad.getObject(), visited);
+	  }
 	}
 
 	public String getId() {

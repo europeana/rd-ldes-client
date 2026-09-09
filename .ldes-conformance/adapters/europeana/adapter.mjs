@@ -22,7 +22,7 @@ if (operation === "probe") {
     clientVersion: "0.1-SNAPSHOT",
     clientRevision: process.env.LDES_CT_CLIENT_REVISION ?? "working-tree",
     capabilities: {
-      modes: ["ordered"],
+      modes: ["ordered", "unordered"],
       memberExtraction: true,
       context: true,
       persistentState: true,

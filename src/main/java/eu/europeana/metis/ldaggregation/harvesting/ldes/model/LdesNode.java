@@ -57,6 +57,18 @@ public class LdesNode {
     }   
   }
 
+  /**
+   * Binds this page to an already discovered event stream.
+   *
+   * <p>Every page of a stream is read against the stream discovered at the entry
+   * point. Re-guessing it per page lets an unrelated {@code tree:view} statement
+   * on some other subject hijack the page's members.</p>
+   */
+  public LdesNode(Model pageModel, Dataset quadsDataset, String eventStreamUri) {
+    this.quadsDataset = quadsDataset;
+    this.eventStreamRes = pageModel.getResource(eventStreamUri);
+  }
+
   public String getUri() {
 		return eventStreamRes.getURI();
 	}

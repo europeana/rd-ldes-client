@@ -16,6 +16,7 @@ import java.util.Set;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.rdf.model.Literal;
+import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
 
@@ -27,7 +28,6 @@ import eu.europeana.metis.ldaggregation.harvesting.ldes.http.UrlRequest;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.model.ActivityType;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.model.LdesNode;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.model.Member;
-import eu.europeana.metis.ldaggregation.harvesting.ldes.model.View;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.util.RdfUtil;
 
 /**
@@ -103,63 +103,97 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
       String nodeUrl = pending.removeFirst();
       if (!visitedNodes.add(nodeUrl))
         continue;
-      Dataset dataset;
+      Page page;
       try {
-        dataset = retrieve(nodeUrl);
+        page = retrieve(nodeUrl);
       } catch (AccessException error) {
         if ("410".equals(error.getCode()))
           continue;
         throw error;
       }
-      if (dataset == null)
+      if (page == null || page.dataset() == null)
         throw new ValidationException("No RDF representation found at " + nodeUrl);
+      // Redirects move the document: everything below is about the page we ended
+      // up on, whose IRI is also the base every relative IRI resolved against.
+      Dataset dataset = page.dataset();
+      String pageUrl = page.url();
+      if (!nodeUrl.equals(pageUrl) && !visitedNodes.add(pageUrl))
+        continue;
+      Model pageModel = RdfUtil.unionModel(dataset);
 
-      LdesNode node = new LdesNode(dataset.getDefaultModel(), dataset);
       if (firstDocument) {
-		long currentPageViews = dataset.getDefaultModel()
-		    .listSubjectsWithProperty(LdesConstants.TREE_VIEW,
-		        dataset.getDefaultModel().getResource(nodeUrl)).toSet().size();
-		if (currentPageViews > 1)
-		  throw new ValidationException("Multiple current-page tree:view matches");
-		if (node.getViewCount() != 1)
-		  throw new ValidationException("LDES entry point must identify exactly one tree:view");
-		eventStreamId = node.getUri();
-		Resource discoveredView = node.getView().orElseThrow().getResource();
-		rootNode = discoveredView.isURIResource() && !sameDocument(nodeUrl, discoveredView.getURI())
-		    ? discoveredView.getURI() : nodeUrl;
+        discoverRoot(pageModel, pageUrl);
         firstDocument = false;
+        if (!sameDocument(pageUrl, rootNode))
+          pending.addLast(rootNode);
       }
-	  if (rootDataset == null && sameDocument(nodeUrl, rootNode)) {
-		rootDataset = dataset;
-		configureOrdering(node);
-	  }
-      List<Member> nodeMembers = node.getMembers();
-      for (Member member : nodeMembers) {
+      LdesNode node = new LdesNode(pageModel, dataset, eventStreamId);
+      if (rootDataset == null && sameDocument(pageUrl, rootNode)) {
+        rootDataset = dataset;
+        configureOrdering(node);
+        handler.processContext(extractContext());
+      }
+      for (Member member : node.getMembers()) {
+        // Unordered traversal has nothing to wait for: a member whose page has
+        // been read is complete. Buffering it until the whole tree is crawled
+        // would stall the consumer behind the slowest branch and hold the entire
+        // stream in memory; ordered emission has no such choice.
+        if (handler.getTraversalMode() == TraversalMode.UNORDERED) {
+          emitMember(member);
+          continue;
+        }
         members.putIfAbsent(member.getId(), member);
         memberPriorities.putIfAbsent(member.getId(), nodePriorities.getOrDefault(nodeUrl, 2));
       }
 
-      Optional<View> view = node.getView();
-      if (view.isPresent()) {
-        Resource viewResource = view.get().getResource();
-        if (viewResource.isURIResource() && !sameDocument(nodeUrl, viewResource.getURI()))
-          pending.addLast(viewResource.getURI());
-        view.get().getNodeRelations().forEach(relations -> pending.addLast(relations.getNodeUrl()));
-      } else if (nodeMembers.isEmpty() && node.getEventStreamResource()
-          .hasProperty(org.apache.jena.vocabulary.RDF.type, LdesConstants.LDES_EVENT_STREAM)) {
-        throw new ValidationException("LDES entry point has no tree:view");
-      }
+      // A tree:relation is scoped to the page that carries it. Relations hanging
+      // off any other subject describe someone else's node and are not ours to
+      // follow, so the frontier is read from the page IRI alone.
+      for (Resource relation : resourceObjects(pageModel.getResource(pageUrl),
+          LdesConstants.TREE_RELATION))
+        for (String target : resourceValues(relation, LdesConstants.TREE_NODE))
+          pending.addLast(target);
     }
 	if (rootDataset == null)
 	  throw new ValidationException("Could not retrieve the discovered LDES root node");
-	handler.processContext(extractContext());
   }
 
-  private Dataset retrieve(String nodeUrl) throws Exception {
+  /**
+   * Identifies the event stream and its root node from the entry document.
+   *
+   * <p>LDES 1.0 s4.2 puts the current-page pattern first: a {@code tree:view}
+   * pointing at the page in hand names the root outright. Only when the page
+   * makes no such claim may the entry point's own {@code tree:view} be used,
+   * which keeps a stray view statement about some other resource from
+   * redirecting the crawl.</p>
+   */
+  private void discoverRoot(Model pageModel, String pageUrl) throws ValidationException {
+    Set<Resource> currentPage = pageModel
+        .listSubjectsWithProperty(LdesConstants.TREE_VIEW, pageModel.getResource(pageUrl)).toSet();
+    if (currentPage.size() > 1)
+      throw new ValidationException("Multiple current-page tree:view matches");
+    if (currentPage.size() == 1 && currentPage.iterator().next().isURIResource()) {
+      eventStreamId = currentPage.iterator().next().getURI();
+      rootNode = pageUrl;
+      return;
+    }
+    List<String> announced = resourceValues(pageModel.getResource(streamUrl),
+        LdesConstants.TREE_VIEW);
+    if (announced.size() != 1)
+      throw new ValidationException("LDES entry point must identify exactly one tree:view");
+    eventStreamId = streamUrl;
+    rootNode = announced.get(0);
+  }
+
+  /** A retrieved document together with the IRI it was finally served from. */
+  private record Page(String url, Dataset dataset) {
+  }
+
+  private Page retrieve(String nodeUrl) throws Exception {
     Optional<CachedResponse> cached = handler.getCachedResponse(nodeUrl);
     if (cached.isPresent() && cached.get().immutable()) {
       nodePriorities.put(nodeUrl, 0);
-      return parse(cached.get(), nodeUrl);
+      return new Page(nodeUrl, parse(cached.get(), nodeUrl));
     }
 
     UrlRequest request = new UrlRequest(nodeUrl);
@@ -171,12 +205,13 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
       if (cached.isEmpty())
         throw new ValidationException("Received 304 without a cached representation for " + nodeUrl);
 	  fetched.getResponse().close();
-      return parse(cached.get(), nodeUrl);
+      return new Page(nodeUrl, parse(cached.get(), nodeUrl));
     }
 	HttpResponse response = new HttpResponse(fetched);
 
+    String pageUrl = fetched.getFinalUrl();
     Dataset dataset = RdfUtil.readRdfQuads(response.body,
-        RdfUtil.fromMimeType(response.getContentType()), nodeUrl);
+        RdfUtil.fromMimeType(response.getContentType()), pageUrl);
     boolean headerImmutable = Optional.ofNullable(response.getHeader("Cache-Control"))
         .map(value -> value.toLowerCase(java.util.Locale.ROOT).contains("immutable"))
         .orElse(false);
@@ -187,7 +222,7 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
     nodePriorities.put(nodeUrl, rdfImmutable ? 0 : headerImmutable ? 1 : 2);
     handler.cacheResponse(nodeUrl, new CachedResponse(response.body, response.getContentType(),
         response.getHeader("ETag"), immutable));
-    return dataset;
+    return new Page(pageUrl, dataset);
   }
 
   private static Dataset parse(CachedResponse response, String baseUri) {
@@ -195,16 +230,25 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
   }
 
   private LdesContext extractContext() {
-    var model = rootDataset.getDefaultModel();
+    Model model = RdfUtil.unionModel(rootDataset);
     Resource stream = model.getResource(eventStreamId);
     Resource root = model.getResource(rootNode);
     List<String> shapes = resourceValues(stream, LdesConstants.TREE_SHAPE);
-    List<String> viewDescriptions = resourceValues(root, LdesConstants.TREE_VIEW_DESCRIPTION);
+    // A view description is usually a blank node, so the retention policies it
+    // announces are only reachable by walking the node itself, never its IRI.
+    List<Resource> viewDescriptionNodes = resourceObjects(root, LdesConstants.TREE_VIEW_DESCRIPTION);
     Set<String> retention = new java.util.TreeSet<>(resourceValues(root, LdesConstants.LDES_RETENTION_POLICY));
-    for (String description : viewDescriptions)
-      retention.addAll(resourceValues(model.getResource(description), LdesConstants.LDES_RETENTION_POLICY));
+    for (Resource description : viewDescriptionNodes)
+      retention.addAll(resourceValues(description, LdesConstants.LDES_RETENTION_POLICY));
+    // LDES 1.0 s4.4: a policy the page names but never describes means the view
+    // retains no members, which a consumer can only act on if we single it out.
+    List<String> emptyRetention = retention.stream()
+        .filter(policy -> !model.contains(model.getResource(policy), null, (RDFNode) null))
+        .toList();
+    List<String> viewDescriptions = viewDescriptionNodes.stream().filter(RDFNode::isURIResource)
+        .map(Resource::getURI).sorted().toList();
     return new LdesContext(eventStreamId, rootNode, rootDataset, shapes, viewDescriptions,
-        List.copyOf(retention), resourceValue(stream, LdesConstants.LDES_TIMESTAMP_PATH),
+        List.copyOf(retention), emptyRetention, resourceValue(stream, LdesConstants.LDES_TIMESTAMP_PATH),
         resourceValue(stream, LdesConstants.LDES_SEQUENCE_PATH),
         resourceValue(stream, LdesConstants.LDES_VERSION_TIMESTAMP_PATH),
         resourceValue(stream, LdesConstants.LDES_VERSION_SEQUENCE_PATH),
@@ -213,9 +257,14 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
 
   private static List<String> resourceValues(Resource subject,
       org.apache.jena.rdf.model.Property property) {
+    return resourceObjects(subject, property).stream().filter(RDFNode::isURIResource)
+        .map(Resource::getURI).sorted().toList();
+  }
+
+  private static List<Resource> resourceObjects(Resource subject,
+      org.apache.jena.rdf.model.Property property) {
     return subject.listProperties(property).mapWith(statement -> statement.getObject())
-        .filterKeep(RDFNode::isURIResource).mapWith(node -> node.asResource().getURI()).toList()
-        .stream().sorted().toList();
+        .filterKeep(RDFNode::isResource).mapWith(RDFNode::asResource).toList();
   }
 
   private static String resourceValue(Resource subject, org.apache.jena.rdf.model.Property property) {
@@ -256,15 +305,19 @@ public class TraversalOrderedByTimestamp implements TreeTraversal {
       ordered.sort(Comparator.comparingInt(member ->
           memberPriorities.getOrDefault(member.getId(), 2)));
 
-    for (Member member : ordered) {
-      if (!processedMemberIds.add(member.getId()))
-        continue;
-      updateLatestTimestamp(member);
-      handler.processActivity(member);
-      ActivityType activityType = activityType(member);
-      if (activityType != null)
-        report.incrementActivity(activityType);
-    }
+    for (Member member : ordered)
+      emitMember(member);
+  }
+
+  /** Hands one not-yet-seen member to the handler. */
+  private void emitMember(Member member) throws Exception {
+    if (!processedMemberIds.add(member.getId()))
+      return;
+    updateLatestTimestamp(member);
+    handler.processActivity(member);
+    ActivityType activityType = activityType(member);
+    if (activityType != null)
+      report.incrementActivity(activityType);
   }
 
   private Comparator<Member> memberComparator() {
