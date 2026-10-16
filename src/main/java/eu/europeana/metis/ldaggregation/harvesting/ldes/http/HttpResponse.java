@@ -20,7 +20,7 @@ public class HttpResponse {
 	public HttpResponse(HttpRequest req) throws IOException {
 		headers = new ArrayList<>(5);
 		for (String headerName : new String[] { "Content-Type", "Content-Encoding",
-				"Content-Disposition"/* , "Content-MD5" */ }) {
+				"Content-Disposition", "ETag", "Cache-Control" }) {
 			for (Header h : req.getResponseHeaders(headerName))
 				headers.add(new SimpleEntry<String, String>(h.getName(), h.getValue()));
 		}

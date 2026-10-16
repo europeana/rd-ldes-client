@@ -47,13 +47,26 @@ public class LdesNode {
     this.quadsDataset= quadsDataset;
     eventStreamRes = RdfUtil.findFirstResourceWithProperties(rootNode, RDF.type, LdesConstants.LDES_EVENT_STREAM, null, null);
     if(eventStreamRes==null) {
-//      throw new ValidationException("LDES stream not found");
-      //TODO: remove this block. It is a hack to bypass the incorrect JSON-LD from RijksMuseum
-      eventStreamRes = RdfUtil.findFirstResourceWithProperties(rootNode, LdesConstants.LDES_TIMESTAMP_PATH, LdesConstants.AS_PUBLISHED, null, null);
+	  eventStreamRes = RdfUtil.findFirstResourceWithProperties(rootNode, LdesConstants.TREE_VIEW, null, null, null);
+	  if(eventStreamRes==null)
+		eventStreamRes = RdfUtil.findFirstResourceWithProperties(rootNode, LdesConstants.TREE_MEMBER, null, null, null);
+	  if(eventStreamRes==null)
+		eventStreamRes = RdfUtil.findFirstResourceWithProperties(rootNode, LdesConstants.LDES_TIMESTAMP_PATH, LdesConstants.AS_PUBLISHED, null, null);
       if(eventStreamRes==null) 
         throw new ValidationException("LDES stream not found");
-      //END OF BLOCK
     }   
+  }
+
+  /**
+   * Binds this page to an already discovered event stream.
+   *
+   * <p>Every page of a stream is read against the stream discovered at the entry
+   * point. Re-guessing it per page lets an unrelated {@code tree:view} statement
+   * on some other subject hijack the page's members.</p>
+   */
+  public LdesNode(Model pageModel, Dataset quadsDataset, String eventStreamUri) {
+    this.quadsDataset = quadsDataset;
+    this.eventStreamRes = pageModel.getResource(eventStreamUri);
   }
 
   public String getUri() {
@@ -65,7 +78,32 @@ public class LdesNode {
 	}
 
 	public Property getTimestampPath() {
-	  return ResourceFactory.createProperty(eventStreamRes.getPropertyResourceValue(LdesConstants.LDES_TIMESTAMP_PATH).getURI());
+	  Resource path = eventStreamRes.getPropertyResourceValue(LdesConstants.LDES_TIMESTAMP_PATH);
+	  return path == null || !path.isURIResource() ? null : ResourceFactory.createProperty(path.getURI());
+	}
+
+	public RDFNode getTimestampPathNode() {
+	  Statement statement = eventStreamRes.getProperty(LdesConstants.LDES_TIMESTAMP_PATH);
+	  return statement == null ? null : statement.getObject();
+	}
+
+	public RDFNode getSequencePath() {
+	  Statement statement = eventStreamRes.getProperty(LdesConstants.LDES_SEQUENCE_PATH);
+	  return statement == null ? null : statement.getObject();
+	}
+
+	public RDFNode getTransactionFinalizedPath() {
+	  Statement statement = eventStreamRes.getProperty(LdesConstants.LDES_TRANSACTION_FINALIZED_PATH);
+	  return statement == null ? null : statement.getObject();
+	}
+
+	public RDFNode getTransactionFinalizedObject() {
+	  Statement statement = eventStreamRes.getProperty(LdesConstants.LDES_TRANSACTION_FINALIZED_OBJECT);
+	  return statement == null ? null : statement.getObject();
+	}
+
+	public Resource getEventStreamResource() {
+	  return eventStreamRes;
 	}
 
 	public Resource getShaclShapeUri() {
@@ -85,6 +123,10 @@ public class LdesNode {
       return Optional.of(new View(viewRs));
     return Optional.empty();
   }
+
+	public int getViewCount() {
+	  return eventStreamRes.listProperties(LdesConstants.TREE_VIEW).toList().size();
+	}
 
   /**
    * @return

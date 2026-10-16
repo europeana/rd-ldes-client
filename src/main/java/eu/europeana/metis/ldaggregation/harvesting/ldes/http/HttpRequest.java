@@ -24,6 +24,7 @@ public class HttpRequest {
 	Content content;
 	Throwable error;
 	private boolean streaming;
+	private String finalUrl;
 
 	public HttpRequest(String url) {
 		super();
@@ -48,6 +49,20 @@ public class HttpRequest {
 
 	public String getUrl() {
 		return url.getUrl();
+	}
+
+	/**
+	 * The URL the response was finally served from, which differs from
+	 * {@link #getUrl()} when the client followed a redirect. RDF has to be parsed
+	 * against this IRI: it is the base every relative IRI in the document resolves
+	 * against, and the identity the document uses to talk about itself.
+	 */
+	public String getFinalUrl() {
+		return finalUrl != null ? finalUrl : getUrl();
+	}
+
+	public void setFinalUrl(String finalUrl) {
+		this.finalUrl = finalUrl;
 	}
 
 	public UrlRequest getUrlRequest() {

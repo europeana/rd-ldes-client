@@ -4,18 +4,28 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
-import java.util.Comparator;
-import java.util.Iterator;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+import org.apache.jena.graph.Node;
 import org.apache.jena.query.Dataset;
+import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.rdf.model.Model;
+import org.apache.jena.sparql.core.DatasetGraph;
+import org.apache.jena.sparql.core.DatasetGraphFactory;
+import org.apache.jena.sparql.core.Quad;
 import org.apache.jena.rdf.model.Property;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Statement;
 import org.apache.jena.vocabulary.RDF;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.LdesConstants;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.ValidationException;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.util.RdfUtil;
+import eu.europeana.metis.ldaggregation.harvesting.ldes.util.ShaclPath;
 
 /**
  * Data object for a as:Activity
@@ -33,10 +43,11 @@ public class Member implements Comparable<Member>{
 	  this.quadsDataset=quadsDataset;
 	  this.timestampPath= timestampPath;
 	  this.versionPath= versionPath;
-	  validate();
 	}
 
 	public void validate() throws ValidationException {
+		if (getObject() == null)
+			return;
 		ActivityType typeOfActivity = null;
 		try{
 		  typeOfActivity = getTypeOfActivity();
@@ -69,6 +80,8 @@ public class Member implements Comparable<Member>{
 	}
 
   public Instant getTimestamp() {
+	if (timestampPath == null)
+	  return null;
     Statement endTimeSt = activityRes.getProperty(timestampPath); 
     if(endTimeSt!=null)
       return parseXsdDate(endTimeSt.getObject().asLiteral().getString());
@@ -120,6 +133,12 @@ public class Member implements Comparable<Member>{
 
 	@Override
 	public int compareTo(Member other) {
+	if (getTimestamp() == null && other.getTimestamp() == null)
+	  return activityRes.getURI().compareTo(other.activityRes.getURI());
+	if (getTimestamp() == null)
+	  return 1;
+	if (other.getTimestamp() == null)
+	  return -1;
     long diffMillis = ChronoUnit.MILLIS.between(other.getTimestamp(), getTimestamp());
     // aor for descending order
     //    long diffMillis = ChronoUnit.MILLIS.between(getTimestamp(), other.getTimestamp());
@@ -134,7 +153,48 @@ public class Member implements Comparable<Member>{
    * @return
    */
   public Model getObjectNamedGraph() {
-    return quadsDataset.getNamedModel(activityRes.getURI());
+	return RdfUtil.unionModel(getDataset());
   }
+
+	/**
+	 * The member's own data, gathered by the default-graph-star rule.
+	 *
+	 * <p>Starting from the member, a node contributes the default-graph statements
+	 * it is the subject of and, if it also names a graph, everything in that graph.
+	 * Blank nodes reached along the way are followed the same way, which is what
+	 * lets a member reach a signature or provenance graph named by a blank node.</p>
+	 */
+	public Dataset getDataset() {
+	  DatasetGraph source = quadsDataset.asDatasetGraph();
+	  DatasetGraph extracted = DatasetGraphFactory.createTxnMem();
+	  copyNodeClosure(source, extracted, activityRes.asNode(), new HashSet<>());
+	  return DatasetFactory.wrap(extracted);
+	}
+
+	private static void copyNodeClosure(DatasetGraph source, DatasetGraph target, Node focus,
+		Set<Node> visited) {
+	  if (!visited.add(focus))
+		return;
+	  List<Quad> matching = new ArrayList<>();
+	  source.getDefaultGraph().find(focus, Node.ANY, Node.ANY)
+		  .forEachRemaining(triple -> matching.add(Quad.create(Quad.defaultGraphIRI, triple)));
+	  source.find(focus, Node.ANY, Node.ANY, Node.ANY).forEachRemaining(matching::add);
+	  for (Quad quad : matching) {
+		if (quad.isDefaultGraph())
+		  target.getDefaultGraph().add(quad.asTriple());
+		else
+		  target.add(quad);
+		if (quad.getObject().isBlank())
+		  copyNodeClosure(source, target, quad.getObject(), visited);
+	  }
+	}
+
+	public String getId() {
+	  return activityRes.getURI();
+	}
+
+	public java.util.List<RDFNode> evaluatePath(RDFNode path) {
+	  return ShaclPath.evaluate(getObjectNamedGraph(), activityRes, path);
+	}
 	
 }

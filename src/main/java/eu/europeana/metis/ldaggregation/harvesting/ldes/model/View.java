@@ -5,7 +5,7 @@ package eu.europeana.metis.ldaggregation.harvesting.ldes.model;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +30,10 @@ public class View {
     this.viewRs = viewRs;
   }
 
+  public Resource getResource() {
+    return viewRs;
+  }
+
   /**
    * @return
    */
@@ -45,7 +49,7 @@ public class View {
    * @return
    */
   public Collection<NodeRelations> getNodeRelations() {
-    Map<String, NodeRelations> relationsByNode=new HashMap<>();
+    Map<String, NodeRelations> relationsByNode=new LinkedHashMap<>();
     getRelations().forEach(r -> {
       try {
         NodeRelations nodeRelations = relationsByNode.get(r.getNodeUrl());

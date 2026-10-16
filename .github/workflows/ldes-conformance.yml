@@ -1,0 +1,106 @@
+name: LDES 1.0 spec compliance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ldes-conformance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CONFORMANCE_SUITE_REPOSITORY: pietercolpaert/ldes-client-conformance-test-suite
+  CONFORMANCE_SUITE_REF: 354ba52f08edc4f23db243dcd843472abe67ef77
+  CONFORMANCE_REPORT: ldes-conformance-report
+
+jobs:
+  conformance:
+    name: LDES conformance and EARL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out client
+        uses: actions/checkout@v4
+
+      - name: Check out pinned conformance suite
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.CONFORMANCE_SUITE_REPOSITORY }}
+          ref: ${{ env.CONFORMANCE_SUITE_REF }}
+          path: conformance-suite
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: conformance-suite/package-lock.json
+
+      - name: Run client regression tests
+        run: mvn -B -ntp test
+
+      - name: Install and validate conformance suite
+        working-directory: conformance-suite
+        run: |
+          npm ci
+          npm run build
+          node dist/cli.js validate --tests tests
+
+      - name: Install and build client adapter
+        run: |
+          cp -R .ldes-conformance/adapters/europeana/. conformance-suite/adapters/europeana/
+          mvn -B -ntp \
+            -f conformance-suite/adapters/europeana/pom.xml \
+            -Dclient.root="$GITHUB_WORKSPACE" \
+            -Dmaven.test.skip=true \
+            package
+
+      - name: Run LDES 1.0 conformance suite
+        working-directory: conformance-suite
+        env:
+          LDES_CT_CLIENT_REVISION: ${{ github.sha }}
+        run: |
+          node dist/cli.js run \
+            --adapter europeana \
+            --tests tests \
+            --out "$GITHUB_WORKSPACE/$CONFORMANCE_REPORT" \
+            --no-fail
+
+      - name: Add conformance result to job summary
+        if: always() && hashFiles('ldes-conformance-report/summary.json') != ''
+        run: |
+          counts=$(jq -r '.counts | "| Passed | Failed | Inapplicable | Indeterminate | Untested |\n| ---: | ---: | ---: | ---: | ---: |\n| \(.passed) | \(.failed) | \(.inapplicable) | \(.cantTell) | \(.untested) |"' "$CONFORMANCE_REPORT/summary.json")
+          {
+            echo "## LDES 1.0 conformance"
+            echo
+            echo "$counts"
+            echo
+            echo "The downloadable artifact contains the EARL report, coverage, summary, and per-test evidence."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce applicable conformance assertions
+        run: |
+          test -s "$CONFORMANCE_REPORT/earl.ttl"
+          jq -e '.counts.failed == 0 and .counts.cantTell == 0 and .counts.untested == 0' \
+            "$CONFORMANCE_REPORT/summary.json"
+
+      - name: Upload EARL report and evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ldes-conformance-${{ github.sha }}
+          path: ldes-conformance-report/
+          if-no-files-found: error
+          retention-days: 30

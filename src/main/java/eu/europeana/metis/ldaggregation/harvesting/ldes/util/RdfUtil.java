@@ -29,7 +29,11 @@ import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFLanguages;
 import org.apache.jena.riot.RDFParser;
 import org.apache.jena.riot.RiotException;
+import org.apache.jena.riot.lang.LangJSONLD11;
 import org.apache.jena.riot.system.ErrorHandler;
+import org.apache.jena.sparql.util.Context;
+
+import com.apicatalog.jsonld.JsonLdOptions;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.http.AccessException;
 import eu.europeana.metis.ldaggregation.harvesting.ldes.http.HttpRequest;
@@ -71,7 +75,10 @@ public class RdfUtil {
 	public static final String CONTENT_TYPES_ACCEPT_HEADER = Lang.RDFXML.getContentType().getContentTypeStr() + ", "
 			+ Lang.TURTLE.getContentType().getContentTypeStr() + ", " + Lang.JSONLD.getContentType().getContentTypeStr();
 	public static final String CONTENT_TYPES_QUADS_ACCEPT_HEADER = Lang.JSONLD.getContentType().getContentTypeStr() + ", "
-	    + Lang.TRIG.getContentType().getContentTypeStr();
+	    + Lang.TRIG.getContentType().getContentTypeStr() + ", "
+	    + Lang.NQUADS.getContentType().getContentTypeStr() + ", "
+	    + Lang.NTRIPLES.getContentType().getContentTypeStr() + ", "
+	    + Lang.TURTLE.getContentType().getContentTypeStr();
 
 	protected static ErrorHandler lenientErrorHandler = new ErrorHandler() {
     @Override
@@ -230,15 +237,57 @@ public class RdfUtil {
 		return model;
 	}
 
+  /**
+   * Every graph of {@code dataset} merged into one model.
+   *
+   * <p>An LDES page may put its tree metadata in a named graph — JSON-LD with a
+   * top-level {@code @graph} does exactly that — so metadata lookups have to
+   * range over the whole document rather than the default graph alone.</p>
+   */
+  public static Model unionModel(Dataset dataset) {
+    Model union = ModelFactory.createDefaultModel();
+    union.add(dataset.getDefaultModel());
+    var graphs = dataset.asDatasetGraph();
+    graphs.listGraphNodes().forEachRemaining(
+        name -> union.add(ModelFactory.createModelForGraph(graphs.getGraph(name))));
+    return union;
+  }
+
+  /**
+   * Parser context that routes JSON-LD context resolution through a shared
+   * cache. Jena builds default options when the context carries none, so this
+   * only adds the loader.
+   */
+  private static final Context JSONLD_PARSER_CONTEXT = jsonLdParserContext();
+
+  private static Context jsonLdParserContext() {
+    JsonLdOptions options = new JsonLdOptions();
+    options.setDocumentLoader(new CachingJsonLdLoader());
+    Context context = new Context();
+    context.set(LangJSONLD11.JSONLD_OPTIONS, options);
+    return context;
+  }
+
   public static Dataset readRdfQuads(byte[] content, Lang lang) {
+	return readRdfQuads(content, lang, null);
+  }
+
+  public static Dataset readRdfQuads(byte[] content, Lang lang, String baseUri) {
     if (lang == null)
       throw new InvalidParameterException("Lang must be provided");
     Dataset dataset = DatasetFactory.createTxnMem();
     try (ByteArrayInputStream is = new ByteArrayInputStream(content)) {
-      RDFParser.create().source(is) // Set the input stream
-          .lang(lang) // Specify the language (important for accurate parsing)
-          .errorHandler(lenientErrorHandler) // Set your custom error handler
-          .parse(dataset);
+	  var parser = RDFParser.create().source(is).lang(lang).errorHandler(lenientErrorHandler);
+	  if (baseUri != null)
+		parser.base(baseUri);
+	  if (Lang.JSONLD.equals(lang))
+		parser.context(JSONLD_PARSER_CONTEXT);
+	  // JSON-LD is registered as both a triples and a quads syntax, so asking
+	  // "is it triples?" first would silently drop every named graph it carries.
+	  if (RDFLanguages.isQuads(lang))
+		parser.parse(dataset);
+	  else
+		parser.parse(dataset.getDefaultModel());
     } catch (IOException e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -253,7 +302,7 @@ public class RdfUtil {
 
 	public static Dataset readRdfQuadsFromUri(String uri) throws AccessException, InterruptedException, IOException {
 	  HttpRequest rdfReq = HttpUtil.makeRequest(uri, "Accept", CONTENT_TYPES_QUADS_ACCEPT_HEADER);
-	  return readRdfQuads(new HttpResponse(rdfReq));
+	  return readRdfQuads(new HttpResponse(rdfReq), uri);
 	}
 
 	public static void writeRdf(Model model, Lang l, OutputStream out) {
@@ -372,7 +421,11 @@ public class RdfUtil {
 	}
 
 	public static Dataset readRdfQuads(HttpResponse rdf) {
-	  Dataset model = readRdfQuads(rdf.body, fromMimeType(rdf.getHeader("Content-Type")));
+	  return readRdfQuads(rdf, null);
+	}
+
+	public static Dataset readRdfQuads(HttpResponse rdf, String baseUri) {
+	  Dataset model = readRdfQuads(rdf.body, fromMimeType(rdf.getHeader("Content-Type")), baseUri);
 	  if (model.isEmpty())
 	    return null;
 	  return model;

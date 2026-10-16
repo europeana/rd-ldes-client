@@ -2,6 +2,8 @@ package eu.europeana.metis.ldaggregation.harvesting.ldes;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.Set;
+import java.util.Optional;
 
 import eu.europeana.metis.ldaggregation.harvesting.ldes.model.Member;
 
@@ -11,6 +13,26 @@ import eu.europeana.metis.ldaggregation.harvesting.ldes.model.Member;
  *
  */
 public interface ActivityHandler {
+
+	default TraversalMode getTraversalMode() {
+		return TraversalMode.AUTO;
+	}
+
+	default Set<String> getProcessedMemberIds(String streamUri) {
+		return Set.of();
+	}
+
+	default Optional<CachedResponse> getCachedResponse(String resourceUri) {
+		return Optional.empty();
+	}
+
+	default void cacheResponse(String resourceUri, CachedResponse response) throws Exception {
+		// Persistence is optional for one-shot handlers.
+	}
+
+	default void processContext(LdesContext context) throws Exception {
+		// Context observation is optional for legacy handlers.
+	}
 
 	/**
 	 * Called by the ProcessingAlgorith to check if the CrawlingHandler processes
@@ -75,6 +97,10 @@ public interface ActivityHandler {
 	 * @throws Exception
 	 */
 	public void crawlEnd(Instant latestTimestamp) throws Exception;
+
+	default void crawlEnd(Instant latestTimestamp, Set<String> processedMemberIds) throws Exception {
+		crawlEnd(latestTimestamp);
+	}
 
 	/**
 	 * Signals to the handler that the crawl ended with an error
